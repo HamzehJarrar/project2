@@ -1,6 +1,6 @@
 import { db } from "..";
 import { feedFollows, feeds, users } from "../schema";
-import { eq , and } from "drizzle-orm";
+import { eq , and , sql } from "drizzle-orm";
 
 export async function createFeed(
   feedName: string,
@@ -65,6 +65,7 @@ export async function getFeedByUrl(url: string) {
   const [result] = await db.select().from(feeds).where(eq(feeds.url, url));
   return result;
 }
+
 export async function deleteFeedFollow(userId: string, url: string) {
   const feed = await getFeedByUrl(url);
   if (!feed) throw new Error("Feed not found");
@@ -74,4 +75,22 @@ export async function deleteFeedFollow(userId: string, url: string) {
     .where(
       and(eq(feedFollows.userId, userId), eq(feedFollows.feedId, feed.id)),
     );
+}
+
+export async function markFeedFetched(feedId: string) {
+  await db.update(feeds)
+    .set({
+      lastFetchedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(feeds.id, feedId));
+}
+
+export async function getNextFeedToFetch() {
+  const [result] = await db
+    .select()
+    .from(feeds)
+    .orderBy(sql`${feeds.lastFetchedAt} ASC NULLS FIRST`)
+    .limit(1);
+  return result;
 }

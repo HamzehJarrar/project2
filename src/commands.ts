@@ -13,7 +13,9 @@ import {
   getAllFeeds,
   getFeedByUrl,
   getFeedFollowsForUser,
-  deleteFeedFollow
+  deleteFeedFollow,
+  getNextFeedToFetch,
+  markFeedFetched,
 } from "./lib/queries/feeds";
 import { printFeed } from "./lib/queries/printFeed";
 import { User } from "./lib/schema";
@@ -163,15 +165,80 @@ export const handlerFollow: UserCommandHandler = async (
   );
 };
 
-export const handlerFollowing: UserCommandHandler = async (cmdName, user, ...args) => {
+export const handlerFollowing: UserCommandHandler = async (
+  cmdName,
+  user,
+  ...args
+) => {
   const follows = await getFeedFollowsForUser(user.id);
   console.log(`User ${user.name} follows:`);
   follows.forEach((f) => console.log(`* ${f.feedName}`));
 };
 
-export const handlerUnfollow: UserCommandHandler = async (cmdName, user, ...args) => {
+export const handlerUnfollow: UserCommandHandler = async (
+  cmdName,
+  user,
+  ...args
+) => {
   if (args.length < 1) throw new Error("Usage: unfollow <url>");
   const url = args[0];
-    await deleteFeedFollow(user.id, url);
+  await deleteFeedFollow(user.id, url);
   console.log(`User '${user.name}' has unfollowed feed with URL '${url}'`);
+};
+
+function parseDuration(durationStr: string): number {
+  const regex = /^(\d+)(ms|s|m|h)$/;
+  const match = durationStr.match(regex);
+  if (!match) throw new Error(`Invalid duration: ${durationStr}`);
+
+  const value = parseInt(match[1]);
+  const unit = match[2];
+
+  switch (unit) {
+    case "ms": return value;
+    case "s": return value * 1000;
+    case "m": return value * 1000 * 60;
+    case "h": return value * 1000 * 60 * 60;
+    default: return 0;
+  }
 }
+
+async function scrapeFeeds() {
+  const feed = await getNextFeedToFetch();
+  if (!feed) {
+    console.log("No feeds found to fetch.");
+    return;
+  }
+
+  console.log(`Fetching feed: ${feed.name} from ${feed.url}...`);
+  await markFeedFetched(feed.id);
+
+  const rssData = await fetchFeed(feed.url);
+  console.log(`Found ${rssData.channel.item.length} posts in ${feed.name}:`);
+  
+  rssData.channel.item.forEach((item) => {
+    console.log(`* ${item.title}`);
+  });
+}
+
+export const aggHandler: CommandHandler = async (cmdName, ...args) => {
+  if (args.length !== 1) {
+    throw new Error("Usage: agg <time_between_reqs>");
+  }
+
+  const timeBetweenRequests = parseDuration(args[0]);
+  console.log(`Collecting feeds every ${args[0]}...`);
+
+  scrapeFeeds().catch(err => console.error(err)); 
+  const interval = setInterval(() => {
+    scrapeFeeds().catch(err => console.error(err));
+  }, timeBetweenRequests);
+
+  await new Promise<void>((resolve) => {
+    process.on("SIGINT", () => {
+      console.log("\nShutting down feed aggregator...");
+      clearInterval(interval);
+      resolve();
+    });
+  });
+};
