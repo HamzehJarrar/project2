@@ -6,7 +6,8 @@ import {
 
 import { handlerLogin, register , deleteUser,getAllUser, handlerFollowing} from "./commands.js";
 import { aggHandler } from "./agg.js";
-import { handlerAddFeed , handlerFeeds , handlerFollow} from "./commands";
+import { handlerAddFeed , handlerFeeds , handlerFollow , handlerUnfollow} from "./commands";
+import { middlewareLoggedIn } from "./commands";
 
 const registry: CommandsRegistry = {};
 
@@ -15,10 +16,11 @@ registerCommand(registry, "register", register);
 registerCommand(registry, "reset", deleteUser);
 registerCommand(registry, "users", getAllUser);
 registerCommand(registry, "agg", aggHandler);
-registerCommand(registry, "addfeed", handlerAddFeed);
 registerCommand(registry, "feeds", handlerFeeds);
-registerCommand(registry, "follow", handlerFollow);
-registerCommand(registry, "following", handlerFollowing);
+registerCommand(registry, "addfeed", middlewareLoggedIn(handlerAddFeed));
+registerCommand(registry, "follow", middlewareLoggedIn(handlerFollow));
+registerCommand(registry, "following", middlewareLoggedIn(handlerFollowing));
+registerCommand(registry, "unfollow", middlewareLoggedIn(handlerUnfollow));
 
 const args = process.argv.slice(2);
 
